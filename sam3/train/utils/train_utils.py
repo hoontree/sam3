@@ -72,7 +72,15 @@ def setup_distributed_backend(backend, timeout_mins):
     # of waiting
     os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1"
     logging.info(f"Setting up torch.distributed with a timeout of {timeout_mins} mins")
-    dist.init_process_group(backend=backend, timeout=timedelta(minutes=timeout_mins))
+    # Without device_id, barrier() has to guess the device from "current
+    # context" and warns about it on every call. LOCAL_RANK is already set
+    # (by the caller, before this runs) whenever CUDA is in play.
+    device_id = None
+    if backend == "nccl" and torch.cuda.is_available():
+        device_id = torch.device(f"cuda:{int(os.environ.get('LOCAL_RANK', 0))}")
+    dist.init_process_group(
+        backend=backend, timeout=timedelta(minutes=timeout_mins), device_id=device_id
+    )
     return dist.get_rank()
 
 
